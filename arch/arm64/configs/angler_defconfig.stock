@@ -1,62 +1,3 @@
-# ----------------------------------------------------------------------------------
-# Yank555.lu Kernel configs
-# ----------------------------------------------------------------------------------
-
-# ----------------------------------------------------------------------------------
-# Kernel name
-# ----------------------------------------------------------------------------------
-CONFIG_LOCALVERSION="-angler-YAOSP-MM-6.0.1-Yank555.lu-v1.0d"
-# CONFIG_LOCALVERSION_AUTO is not set
-
-# ----------------------------------------------------------------------------------
-# Kernel compression
-# ----------------------------------------------------------------------------------
-CONFIG_HAVE_KERNEL_GZIP=y
-CONFIG_HAVE_KERNEL_LZMA=y
-CONFIG_HAVE_KERNEL_XZ=y
-CONFIG_HAVE_KERNEL_LZO=y
-# CONFIG_KERNEL_GZIP is not set
-# CONFIG_KERNEL_LZMA is not set
-CONFIG_KERNEL_XZ=y
-# CONFIG_KERNEL_LZO is not set
-
-# ----------------------------------------------------------------------------------
-# TCP congestion control
-# ----------------------------------------------------------------------------------
-CONFIG_TCP_CONG_ADVANCED=y
-CONFIG_TCP_CONG_BIC=y
-CONFIG_TCP_CONG_CUBIC=y
-CONFIG_TCP_CONG_WESTWOOD=y
-CONFIG_TCP_CONG_HTCP=y
-# CONFIG_TCP_CONG_HSTCP is not set
-# CONFIG_TCP_CONG_HYBLA is not set
-# CONFIG_TCP_CONG_VEGAS is not set
-# CONFIG_TCP_CONG_SCALABLE is not set
-# CONFIG_TCP_CONG_LP is not set
-# CONFIG_TCP_CONG_VENO is not set
-# CONFIG_TCP_CONG_YEAH is not set
-# CONFIG_TCP_CONG_ILLINOIS is not set
-# CONFIG_DEFAULT_BIC is not set
-# CONFIG_DEFAULT_CUBIC is not set
-# CONFIG_DEFAULT_HTCP is not set
-CONFIG_DEFAULT_WESTWOOD=y
-# CONFIG_DEFAULT_RENO is not set
-CONFIG_DEFAULT_TCP_CONG="westwood"
-
-# ----------------------------------------------------------------------------------
-# I/O Scheduler support
-# ----------------------------------------------------------------------------------
-CONFIG_IOSCHED_FIOPS=y
-
-# ----------------------------------------------------------------------------------
-# KCAL support
-# ----------------------------------------------------------------------------------
-CONFIG_FB_MSM_MDSS_KCAL_CTRL=y
-
-# ----------------------------------------------------------------------------------
-#
-# Stock angler defconfig
-#
 CONFIG_AUDIT=y
 CONFIG_NO_HZ=y
 CONFIG_HIGH_RES_TIMERS=y
@@ -94,7 +35,6 @@ CONFIG_SMP=y
 CONFIG_SCHED_MC=y
 CONFIG_ARCH_WANTS_CTXSW_LOGGING=y
 CONFIG_PREEMPT=y
-CONFIG_HZ_300=y
 CONFIG_ARMV7_COMPAT=y
 CONFIG_BALANCE_ANON_FILE_RECLAIM=y
 CONFIG_ZSMALLOC=y
@@ -582,6 +522,7 @@ CONFIG_ANDROID_INTF_ALARM_DEV=y
 CONFIG_ONESHOT_SYNC=y
 CONFIG_ION=y
 CONFIG_ION_MSM=y
+CONFIG_ALLOC_BUFFERS_IN_4K_CHUNKS=y
 # CONFIG_NET_VENDOR_SILICOM is not set
 CONFIG_SPS=y
 CONFIG_USB_BAM=y
@@ -595,6 +536,7 @@ CONFIG_RMNET_IPA=y
 CONFIG_MSM_AVTIMER=y
 CONFIG_PFT=y
 CONFIG_MSM_BUS_SCALING=y
+CONFIG_MSM_BUSPM_DEV=y
 CONFIG_BUS_TOPOLOGY_ADHOC=y
 CONFIG_DEBUG_BUS_VOTER=y
 CONFIG_QPNP_HAPTIC=y
