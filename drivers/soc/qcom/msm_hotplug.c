@@ -6,6 +6,7 @@
  * Copyright (c) 2013-2015, Pranav Vashi <neobuddy89@gmail.com>
  * Copyright (c) 2016, jollaman999 <admin@jollaman999.com> / Adaptive for big.LITTLE
  * Copyright (c) 2016, yank555.lu <yank555.lu@gmail.com> / tab cleanup ;)
+ * Copyright (c) 2016, yank555.lu <yank555.lu@gmail.com> / hotplug big core based on load
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -46,11 +47,17 @@
 #define START_DELAY                     20000
 #define DEFAULT_HISTORY_SIZE            10
 #define DEFAULT_DOWN_LOCK_DUR           1000
-#define DEFAULT_MIN_CPUS_ONLINE         2
+#define DEFAULT_MIN_CPUS_ONLINE         3
 #define DEFAULT_MAX_CPUS_ONLINE         LITTLE_CORES
+#define DEFAULT_MAX_CPUS_ONLINE_SUSP    2
+#define DEFAULT_OFFLINE_LOAD            0
+#define DEFAULT_OFFLINE_LOAD_BIG        20
+#define DEFAULT_ONLINE_LOAD_BIG         80
 #define DEFAULT_FAST_LANE_LOAD          99
 #define DEFAULT_BIG_CORE_UP_DELAY       1200
-#define DEFAULT_MAX_CPUS_ONLINE_SUSP    2
+
+// Use for msm_hotplug_resume_timeout
+#define HOTPLUG_TIMEOUT                 2000
 
 unsigned int msm_enabled = HOTPLUG_ENABLED;
 
@@ -60,8 +67,6 @@ struct notifier_block msm_hotplug_fb_notif;
 bool prevent_big_off = false;
 EXPORT_SYMBOL(prevent_big_off);
 
-// Use for msm_hotplug_resume_timeout
-#define HOTPLUG_TIMEOUT            2000
 static bool timeout_enabled = false;
 static s64 pre_time;
 bool msm_hotplug_scr_suspended = false;
@@ -87,6 +92,8 @@ static struct cpu_hotplug {
     unsigned int min_cpus_online;
     unsigned int max_cpus_online;
     unsigned int offline_load;
+    unsigned int offline_load_big;
+    unsigned int online_load_big;
     unsigned int down_lock_dur;
     unsigned int fast_lane_load;
     unsigned int big_core_up_delay;
@@ -95,6 +102,9 @@ static struct cpu_hotplug {
 } hotplug = {
     .min_cpus_online = DEFAULT_MIN_CPUS_ONLINE,
     .max_cpus_online = DEFAULT_MAX_CPUS_ONLINE,
+    .offline_load = DEFAULT_OFFLINE_LOAD,
+    .offline_load_big = DEFAULT_OFFLINE_LOAD_BIG,
+    .online_load_big = DEFAULT_ONLINE_LOAD_BIG,
     .suspended = 0,
     .max_cpus_online_susp = DEFAULT_MAX_CPUS_ONLINE_SUSP,
     .down_lock_dur = DEFAULT_DOWN_LOCK_DUR,
@@ -234,6 +244,27 @@ static unsigned int load_at_max_freq(void)
     struct cpu_load_data *pcpu;
 
     for (cpu = 0; cpu < LITTLE_CORES; cpu++) {
+        if (!cpu_online(cpu))
+            continue;
+        pcpu = &per_cpu(cpuload, cpu);
+        update_average_load(cpu);
+        total_load += pcpu->avg_load_maxfreq;
+        pcpu->cur_load_maxfreq = pcpu->avg_load_maxfreq;
+        max_load = max(max_load, pcpu->avg_load_maxfreq);
+        pcpu->avg_load_maxfreq = 0;
+    }
+    stats.cur_max_load = max_load;
+
+    return total_load;
+}
+
+static unsigned int load_at_max_freq_big(void)
+{
+    int cpu;
+    unsigned int total_load = 0, max_load = 0;
+    struct cpu_load_data *pcpu;
+
+    for (cpu = LITTLE_CORES; cpu < LITTLE_CORES + BIG_CORES; cpu++) {
         if (!cpu_online(cpu))
             continue;
         pcpu = &per_cpu(cpuload, cpu);
@@ -428,20 +459,37 @@ static void big_updown(void)
 {
     unsigned int online_little, online_big;
     unsigned int target_big;
+    unsigned int avg_load_big_cpus;
 
     online_little = num_online_little_cpus();
     online_big = num_online_big_cpus();
 
-    // If LITTLE_CORES is 4 and BIG_CORES is 2.
-    // online_little == 4 -> Turn on all of big cores. (2)
-    // online_little == 3 -> Turn on half of big cores. (1)
-    // else               -> Turn off all of big cores. (0)
-    if (online_little == LITTLE_CORES)
-        target_big = BIG_CORES;
-    else if (online_little == LITTLE_CORES - 1)
-        target_big = BIG_CORES / 2;
-    else
-        target_big = 0;
+    if (online_big > 0) {
+        avg_load_big_cpus = load_at_max_freq_big() / online_big;
+    } else {
+        // if no big core is up, use average of all little cores as load average
+        avg_load_big_cpus = load_at_max_freq() / online_little;
+    }
+
+    // If all little are not up, up big cores depending on load, one at a time
+    if (online_little == LITTLE_CORES) {
+        // if the average load of big cluster is above threshold,
+        // up one more big core if there is one left to up
+        // if the average load of big cluster is below threshold,
+        // down one more big core if there is one left to down
+        if (avg_load_big_cpus >= hotplug.online_load_big && online_big < BIG_CORES) {
+            target_big = online_big + 1;
+        } else if (avg_load_big_cpus <= hotplug.offline_load_big && online_big > 0) {
+            target_big = online_big - 1;
+        }
+    } else {
+        // If not all little cores are up, big cores can only down'ed
+        if (avg_load_big_cpus <= hotplug.offline_load_big && online_big > 0) {
+            target_big = online_big - 1;
+        } else {
+            target_big = online_big;
+        }
+    }
 
     if (online_big != target_big) {
         if (target_big > online_big)
@@ -1095,6 +1143,52 @@ static ssize_t store_offline_load(struct device *dev,
     return count;
 }
 
+static ssize_t show_offline_load_big(struct device *dev,
+                 struct device_attribute *msm_hotplug_attrs,
+                 char *buf)
+{
+    return sprintf(buf, "%u\n", hotplug.offline_load_big);
+}
+
+static ssize_t store_offline_load_big(struct device *dev,
+                  struct device_attribute *msm_hotplug_attrs,
+                  const char *buf, size_t count)
+{
+    int ret;
+    unsigned int val;
+
+    ret = sscanf(buf, "%u", &val);
+    if (ret != 1)
+        return -EINVAL;
+
+    hotplug.offline_load_big = val;
+
+    return count;
+}
+
+static ssize_t show_online_load_big(struct device *dev,
+                 struct device_attribute *msm_hotplug_attrs,
+                 char *buf)
+{
+    return sprintf(buf, "%u\n", hotplug.online_load_big);
+}
+
+static ssize_t store_online_load_big(struct device *dev,
+                  struct device_attribute *msm_hotplug_attrs,
+                  const char *buf, size_t count)
+{
+    int ret;
+    unsigned int val;
+
+    ret = sscanf(buf, "%u", &val);
+    if (ret != 1)
+        return -EINVAL;
+
+    hotplug.online_load_big = val;
+
+    return count;
+}
+
 static ssize_t show_fast_lane_load(struct device *dev,
                    struct device_attribute *msm_hotplug_attrs,
                    char *buf)
@@ -1183,6 +1277,8 @@ static DEVICE_ATTR(max_cpus_online, 644, show_max_cpus_online,
 static DEVICE_ATTR(max_cpus_online_susp, 644, show_max_cpus_online_susp,
            store_max_cpus_online_susp);
 static DEVICE_ATTR(offline_load, 644, show_offline_load, store_offline_load);
+static DEVICE_ATTR(offline_load_big, 644, show_offline_load_big, store_offline_load_big);
+static DEVICE_ATTR(online_load_big, 644, show_online_load_big, store_online_load_big);
 static DEVICE_ATTR(fast_lane_load, 644, show_fast_lane_load,
            store_fast_lane_load);
 static DEVICE_ATTR(big_core_up_delay, 644, show_big_core_up_delay,
@@ -1199,6 +1295,8 @@ static struct attribute *msm_hotplug_attrs[] = {
     &dev_attr_max_cpus_online.attr,
     &dev_attr_max_cpus_online_susp.attr,
     &dev_attr_offline_load.attr,
+    &dev_attr_offline_load_big.attr,
+    &dev_attr_online_load_big.attr,
     &dev_attr_fast_lane_load.attr,
     &dev_attr_big_core_up_delay.attr,
     &dev_attr_io_is_busy.attr,
@@ -1338,6 +1436,6 @@ static void __exit msm_hotplug_exit(void)
 late_initcall(msm_hotplug_init);
 module_exit(msm_hotplug_exit);
 
-MODULE_AUTHOR("jollaman999 <admin@jollaman999.com>");
-MODULE_DESCRIPTION("MSM Hotplug Driver for big.LITTLE");
+MODULE_AUTHOR("yank555.lu <yank555.lu@gmail.com>");
+MODULE_DESCRIPTION("MSM Hotplug Driver for big.LITTLE v2");
 MODULE_LICENSE("GPLv2");
