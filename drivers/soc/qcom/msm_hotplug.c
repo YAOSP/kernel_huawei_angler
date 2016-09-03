@@ -32,6 +32,10 @@
 #include <asm-generic/cputime.h>
 #include <linux/msm_hotplug.h>
 
+#ifdef CONFIG_THERMAL_MONITOR
+#include <linux/msm_thermal.h>
+#endif
+
 // Change this value for your device
 #define LITTLE_CORES    4
 #define BIG_CORES       4
@@ -369,8 +373,15 @@ skip_dealy:
                 continue;
             if (target_big <= num_online_big_cpus())
                 break;
-            cpu_up(cpu);
-            apply_down_lock(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+            // Only up a cpu if thermal control allows it !
+            if(!msm_thermal_deny_cpu_up(cpu)) {
+#endif
+                cpu_up(cpu);
+                apply_down_lock(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+            }
+#endif
         }
 
         big_core_up_ready_checked = false;
@@ -392,7 +403,14 @@ static void big_down(unsigned int target_big)
         if (prevent_big_off && cpu == LITTLE_CORES) {
             // Turn on first of big cores
             if (!cpu_online(LITTLE_CORES))
-                cpu_up(LITTLE_CORES);
+#ifdef CONFIG_THERMAL_MONITOR
+                // Only up a cpu if thermal control allows it !
+                if(!msm_thermal_deny_cpu_up(LITTLE_CORES)) {
+#endif
+                    cpu_up(LITTLE_CORES);
+#ifdef CONFIG_THERMAL_MONITOR
+            }
+#endif
             continue;
         }
 
@@ -443,8 +461,15 @@ static void little_up(void)
             continue;
         if (hotplug.target_cpus <= num_online_little_cpus())
             break;
-        cpu_up(cpu);
-        apply_down_lock(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+        // Only up a cpu if thermal control allows it !
+        if(!msm_thermal_deny_cpu_up(cpu)) {
+#endif
+            cpu_up(cpu);
+            apply_down_lock(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+        }
+#endif
     }
 }
 
@@ -542,7 +567,14 @@ static void msm_hotplug_work(struct work_struct *work)
     // Turn on first of big cores
     if (prevent_big_off) {
         if (!cpu_online(LITTLE_CORES))
-            cpu_up(LITTLE_CORES);
+#ifdef CONFIG_THERMAL_MONITOR
+            // Only up a cpu if thermal control allows it !
+            if(!msm_thermal_deny_cpu_up(LITTLE_CORES)) {
+#endif
+                cpu_up(LITTLE_CORES);
+#ifdef CONFIG_THERMAL_MONITOR
+            }
+#endif
     }
 
     if (timeout_enabled) {
@@ -658,7 +690,14 @@ static void msm_hotplug_resume(void)
         for_each_cpu_not(cpu, cpu_online_mask) {
             if (cpu == 0)
                 continue;
-            cpu_up(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+            // Only up a cpu if thermal control allows it !
+            if(!msm_thermal_deny_cpu_up(cpu)) {
+#endif
+                cpu_up(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+            }
+#endif
             if (!timeout_enabled)
                 apply_down_lock(cpu);
         }
@@ -718,8 +757,15 @@ static int msm_hotplug_start(int start_immediately)
     for_each_cpu_not(cpu, cpu_online_mask) {
         if (cpu == 0)
             continue;
-        cpu_up(cpu);
-        apply_down_lock(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+        // Only up a cpu if thermal control allows it !
+        if(!msm_thermal_deny_cpu_up(cpu)) {
+#endif
+            cpu_up(cpu);
+            apply_down_lock(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+        }
+#endif
     }
 
     if (start_immediately)
@@ -761,7 +807,14 @@ static void msm_hotplug_stop(void)
     for_each_cpu_not(cpu, cpu_online_mask) {
         if (cpu == 0)
             continue;
-        cpu_up(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+        // Only up a cpu if thermal control allows it !
+        if(!msm_thermal_deny_cpu_up(cpu)) {
+#endif
+            cpu_up(cpu);
+#ifdef CONFIG_THERMAL_MONITOR
+        }
+#endif
     }
 }
 
